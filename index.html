@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard de Vendas</title>
+  
+  <!-- Carregando Tailwind CSS, React e Babel diretamente no navegador -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+
+    // --- ÍCONES (Substituindo a biblioteca externa para rodar no HTML puro) ---
+    const Icon = ({ children, size = 24, className = "" }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
+    );
+    const Target = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></Icon>;
+    const TrendingUp = (p) => <Icon {...p}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></Icon>;
+    const Users = (p) => <Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Icon>;
+    const Trophy = (p) => <Icon {...p}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></Icon>;
+    const DollarSign = (p) => <Icon {...p}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></Icon>;
+    const PlusCircle = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></Icon>;
+    const CheckCircle = (p) => <Icon {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></Icon>;
+    const AlertCircle = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Icon>;
+    const LayoutDashboard = (p) => <Icon {...p}><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></Icon>;
+    const Send = (p) => <Icon {...p}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></Icon>;
+
+    function App() {
+      // --- COLE A URL DO SEU GOOGLE APPS SCRIPT AQUI ---
+      const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyMtiL3NuqEjJCvr5wUKzCq2Hhm0Bjr8TSBSpyC5WF4vr-2IPiHSC4cVB3Ca_PrymUMkg/exec";
+
+      // --- ESTADOS DA APLICAÇÃO ---
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [loading, setLoading] = useState(false);
+      const [feedback, setFeedback] = useState(null);
+
+      const sellers = ['Ana', 'Beatriz', 'Carla', 'Dani', 'Elena'];
+      const [selectedSeller, setSelectedSeller] = useState('Ana');
+
+      // Dados Simulados
+      const [data, setData] = useState([
+        { id: 1, date: new Date().toISOString(), type: 'venda', seller: 'Ana', value: 2100 },
+        { id: 2, date: new Date().toISOString(), type: 'venda', seller: 'Beatriz', value: 2600 },
+        { id: 3, date: new Date().toISOString(), type: 'venda', seller: 'Carla', value: 1500 },
+        { id: 4, date: new Date().toISOString(), type: 'venda', seller: 'Dani', value: 900 },
+        { id: 5, date: new Date().toISOString(), type: 'atendimento', seller: 'Ana', value: 8 },
+        { id: 6, date: new Date().toISOString(), type: 'venda', seller: 'Ana', value: 200 },
+      ]);
+
+      const [formType, setFormType] = useState('venda');
+      const [formValue, setFormValue] = useState('');
+
+      // --- REGRAS DE NEGÓCIO E GATILHOS ---
+      const getTriggerInfo = (amount) => {
+        if (amount >= 3000) return { label: 'Gatilho Ouro', bonus: '80%', next: null, currentThreshold: 3000 };
+        if (amount >= 2500) return { label: 'Gatilho Prata', bonus: '60%', next: 3000, currentThreshold: 2500 };
+        if (amount >= 2200) return { label: 'Gatilho Bronze', bonus: '40%', next: 2500, currentThreshold: 2200 };
+        if (amount >= 2000) return { label: 'Gatilho Inicial', bonus: '25%', next: 2200, currentThreshold: 2000 };
+        if (amount >= 1000) return { label: 'Ativação', bonus: '0%', next: 2000, currentThreshold: 1000 };
+        return { label: 'Não ativado', bonus: '0%', next: 1000, currentThreshold: 0 };
+      };
+
+      // --- CÁLCULOS DO DASHBOARD ---
+      const todayStr = new Date().toLocaleDateString('pt-BR');
+
+      const mySalesTotal = data
+        .filter(item => item.seller === selectedSeller && item.type === 'venda')
+        .reduce((acc, curr) => acc + curr.value, 0);
+
+      const triggerInfo = getTriggerInfo(mySalesTotal);
+
+      const todayData = data.filter(item => new Date(item.date).toLocaleDateString('pt-BR') === todayStr && item.seller === selectedSeller);
+      
+      const todayAttendances = todayData
+        .filter(item => item.type === 'atendimento')
+        .reduce((acc, curr) => acc + curr.value, 0);
+        
+      const todaySalesCount = todayData.filter(item => item.type === 'venda').length;
+
+      const ranking = useMemo(() => {
+        const totals = {};
+        sellers.forEach(s => totals[s] = 0); 
+        
+        data.filter(item => item.type === 'venda').forEach(item => {
+          totals[item.seller] += item.value;
+        });
+
+        return Object.entries(totals)
+          .map(([seller, amount]) => ({ seller, amount }))
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, 5);
+      }, [data]);
+
+      const formatMoney = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!formValue) return;
+
+        setLoading(true);
+        
+        const payload = {
+          date: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR'),
+          type: formType,
+          seller: selectedSeller,
+          value: parseFloat(formValue)
+        };
+
+        setData([...data, { id: Date.now(), ...payload }]);
+        
+        if (GOOGLE_SCRIPT_URL) {
+          try {
+            await fetch(GOOGLE_SCRIPT_URL, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+          } catch (err) {
+            console.error("Erro ao salvar", err);
+          }
+        }
+
+        setFormValue('');
+        setLoading(false);
+        setFeedback('Lançamento salvo com sucesso!');
+        setTimeout(() => setFeedback(null), 3000);
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-10">
+          <nav className="bg-indigo-700 text-white shadow-md">
+            <div className="max-w-5xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-2 font-bold text-xl tracking-tight">
+                <TrendingUp className="text-indigo-300" />
+                <span>PowerSales Dash</span>
+              </div>
+              
+              <select 
+                value={selectedSeller} 
+                onChange={(e) => setSelectedSeller(e.target.value)}
+                className="bg-indigo-600 text-white border border-indigo-400 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-white text-sm font-medium w-full sm:w-auto"
+              >
+                {sellers.map(s => <option key={s} value={s}>Visão: {s}</option>)}
+              </select>
+            </div>
+          </nav>
+
+          <div className="max-w-5xl mx-auto px-4 mt-6">
+            <div className="flex gap-2 p-1 bg-slate-200 rounded-xl w-full sm:w-fit">
+              <button 
+                onClick={() => setActiveTab('dashboard')}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'dashboard' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <LayoutDashboard size={18} /> Dashboard
+              </button>
+              <button 
+                onClick={() => setActiveTab('cadastro')}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'cadastro' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <PlusCircle size={18} /> Lançar Dados
+              </button>
+            </div>
+          </div>
+
+          <main className="max-w-5xl mx-auto px-4 py-6">
+            
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 col-span-1 md:col-span-2">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="text-slate-500 text-sm font-semibold">Total de Vendas (Mês)</h3>
+                        <p className="text-3xl font-bold text-slate-800 mt-1">{formatMoney(mySalesTotal)}</p>
+                      </div>
+                      <div className="bg-indigo-100 text-indigo-700 py-1.5 px-3 rounded-lg flex items-center gap-2 font-bold text-sm">
+                        <Target size={18} /> {triggerInfo.bonus} de Comissão
+                      </div>
+                    </div>
+
+                    <div className="mt-6">
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="font-medium text-slate-600">
+                          {triggerInfo.next ? `Buscando: ${formatMoney(triggerInfo.next)}` : 'Gatilho Máximo Atingido!'}
+                        </span>
+                        {triggerInfo.next && (
+                          <span className="font-bold text-indigo-600">
+                            Faltam {formatMoney(triggerInfo.next - mySalesTotal)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden">
+                        <div 
+                          className="bg-indigo-500 h-4 rounded-full transition-all duration-1000 relative"
+                          style={{ 
+                            width: triggerInfo.next 
+                              ? `${((mySalesTotal - triggerInfo.currentThreshold) / (triggerInfo.next - triggerInfo.currentThreshold)) * 100}%` 
+                              : '100%' 
+                          }}
+                        >
+                          <div className="absolute top-0 right-0 bottom-0 left-0 bg-white/20 animate-pulse"></div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-2 text-right">Mínimo para ativação: R$ 1.000</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 className="text-slate-500 text-sm font-semibold flex items-center gap-2 mb-4">
+                      <Users size={16} /> Métricas do Dia (Hoje)
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-slate-50 p-4 rounded-xl text-center border border-slate-100">
+                        <p className="text-3xl font-bold text-slate-700">{todayAttendances}</p>
+                        <p className="text-xs font-medium text-slate-500 mt-1">Atendimentos</p>
+                      </div>
+                      <div className="bg-green-50 p-4 rounded-xl text-center border border-green-100">
+                        <p className="text-3xl font-bold text-green-600">{todaySalesCount}</p>
+                        <p className="text-xs font-medium text-green-700 mt-1">Fechamentos</p>
+                      </div>
+                    </div>
+                    {todayAttendances > 0 && (
+                      <p className="text-center text-sm font-medium text-slate-600 mt-4 bg-slate-100 py-1.5 rounded-lg">
+                        Conversão de {((todaySalesCount / todayAttendances) * 100).toFixed(1)}% hoje
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 className="text-slate-800 font-bold mb-6 flex items-center gap-2">
+                      <Trophy className="text-yellow-500" size={20} />
+                      Ranking do Desafio (Top 5)
+                    </h3>
+                    <div className="space-y-3">
+                      {ranking.map((item, index) => {
+                        const isWinner = index === 0;
+                        return (
+                          <div key={item.seller} className={`flex items-center justify-between p-3 rounded-xl border ${isWinner ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-transparent'}`}>
+                            <div className="flex items-center gap-3">
+                              <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${isWinner ? 'bg-yellow-400 text-yellow-900' : 'bg-slate-200 text-slate-600'}`}>
+                                {index + 1}º
+                              </span>
+                              <div>
+                                <p className={`font-bold ${isWinner ? 'text-yellow-800' : 'text-slate-700'}`}>{item.seller}</p>
+                                {isWinner && <p className="text-[10px] uppercase font-bold text-yellow-600 tracking-wider">Líder Atual 👑</p>}
+                              </div>
+                            </div>
+                            <span className={`font-semibold ${isWinner ? 'text-yellow-700' : 'text-slate-600'}`}>
+                              {formatMoney(item.amount)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 className="text-slate-800 font-bold mb-6 flex items-center gap-2">
+                      <AlertCircle className="text-indigo-500" size={20} />
+                      Regras de Comissão
+                    </h3>
+                    <div className="space-y-2">
+                      <div className="flex justify-between p-3 bg-slate-50 rounded-lg text-sm text-slate-600">
+                        <span>Até R$ 999,99</span><span className="font-bold">0%</span>
+                      </div>
+                      <div className="flex justify-between p-3 bg-slate-50 rounded-lg text-sm text-slate-600 border-l-4 border-slate-300">
+                        <span>Mínimo R$ 1.000,00</span><span className="font-bold">Ativação</span>
+                      </div>
+                      <div className="flex justify-between p-3 bg-indigo-50 text-indigo-800 rounded-lg text-sm border-l-4 border-indigo-300">
+                        <span>Acima de R$ 2.000,00</span><span className="font-bold">25%</span>
+                      </div>
+                      <div className="flex justify-between p-3 bg-indigo-50 text-indigo-800 rounded-lg text-sm border-l-4 border-indigo-400">
+                        <span>Acima de R$ 2.200,00</span><span className="font-bold">40%</span>
+                      </div>
+                      <div className="flex justify-between p-3 bg-indigo-50 text-indigo-800 rounded-lg text-sm border-l-4 border-indigo-500">
+                        <span>Acima de R$ 2.500,00</span><span className="font-bold">60%</span>
+                      </div>
+                      <div className="flex justify-between p-3 bg-yellow-50 text-yellow-800 rounded-lg text-sm border-l-4 border-yellow-400">
+                        <span>Acima de R$ 3.000,00</span><span className="font-bold text-yellow-700">80%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'cadastro' && (
+              <div className="max-w-md mx-auto bg-white p-8 rounded-2xl shadow-sm border border-slate-100 mt-4">
+                <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">Lançar Dados</h2>
+                
+                {feedback && (
+                  <div className="mb-6 bg-green-50 text-green-700 p-4 rounded-xl flex items-center gap-2 border border-green-100">
+                    <CheckCircle size={20} /> {feedback}
+                  </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Vendedora</label>
+                    <select 
+                      value={selectedSeller}
+                      onChange={(e) => setSelectedSeller(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 text-slate-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    >
+                      {sellers.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">O que você quer registrar?</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div 
+                        onClick={() => setFormType('venda')}
+                        className={`cursor-pointer p-4 rounded-xl border-2 text-center transition-all ${formType === 'venda' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500'}`}
+                      >
+                        <DollarSign size={24} className="mx-auto mb-1" />
+                        <span className="font-bold text-sm">Venda Realizada</span>
+                      </div>
+                      <div 
+                        onClick={() => setFormType('atendimento')}
+                        className={`cursor-pointer p-4 rounded-xl border-2 text-center transition-all ${formType === 'atendimento' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500'}`}
+                      >
+                        <Users size={24} className="mx-auto mb-1" />
+                        <span className="font-bold text-sm">Atendimento Novo</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      {formType === 'venda' ? 'Qual o valor da venda? (R$)' : 'Quantos atendimentos fez?'}
+                    </label>
+                    <input 
+                      type="number"
+                      step={formType === 'venda' ? "0.01" : "1"}
+                      min="0"
+                      required
+                      value={formValue}
+                      onChange={(e) => setFormValue(e.target.value)}
+                      placeholder={formType === 'venda' ? "Ex: 250.00" : "Ex: 5"}
+                      className="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-lg"
+                    />
+                  </div>
+
+                  <button 
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-colors flex justify-center items-center gap-2 disabled:opacity-50"
+                  >
+                    {loading ? 'Salvando...' : <><Send size={18} /> Salvar no Sistema</>}
+                  </button>
+                </form>
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
